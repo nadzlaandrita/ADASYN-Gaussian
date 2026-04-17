@@ -1,12 +1,20 @@
 # ADASYN-Gaussian
 This notebook contains the raw code for the latest augmentation method of the modified ADASYN algorithm, ADASYN-Gaussian.
+
 **[Algorithm of ADASYN-Gaussian]**
+
 **Input:**
+
 	Training dataset D_tr with m samples {(x_i,y_i )},i=1,…,m, where x_i∈R^n represents an instance in an n-dimensional feature space, and y_i∈Y is the corresponding class label.
+	
 	Let:
+	
 	m_s : number of minority class samples
+	
 	m_l : number of majority class samples
+
 Such that m_s  ≤ m_l and m= m_s+ m_l
+
 	Parameters:
 	K : number of nearest neighbors
 	β∈[0,1] : desired balance level
