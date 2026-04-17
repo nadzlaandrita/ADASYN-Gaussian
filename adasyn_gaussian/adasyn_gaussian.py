@@ -10,28 +10,28 @@ class AdasynGaussian:
     def generate_synthetic_samples(X, y, minority_class, k=5, beta=1.0,
                                    d_threshold=0.5, epsilon=1e-6, alpha_blend=0.5):
         """
-        ADASYN-Gaussian: ADASYN dengan Gaussian sampling sebagai pengganti
+        ADASYN-Gaussian: ADASYN with Gaussian sampling instead of
         linear interpolation.
 
-        Perbedaan utama dari standard ADASYN:
-        1. Adaptive density weighting (sama seperti ADASYN) — minority samples
-           yang dikelilingi lebih banyak majority class mendapat lebih banyak
-           sampel sintetis.
-        2. Gaussian sampling — sampel dibangkitkan dari distribusi Gaussian
-           N(mu, sigma) berbasis neighborhood lokal, bukan interpolasi linear.
-        3. Kovarians = blend antara kovarians lokal + kovarians global kelas
-           minoritas, sehingga menghasilkan variansi yang bermakna.
+        Key differences from standard ADASYN:
+        1. Adaptive density weighting (same as ADASYN) — minority samples
+           surrounded by more majority class samples receive more
+           synthetic samples.
+        2. Gaussian sampling — samples are generated from a local neighborhood-based Gaussian distribution
+           N(mu, sigma) rather than linear interpolation.
+        3. Covariance = a blend of local covariance + global covariance of the
+           minority class, resulting in meaningful variance.
 
         Parameters
         ----------
         X             : array (n_samples, n_features)
         y             : array (n_samples,)
-        minority_class: label kelas minoritas
-        k             : jumlah tetangga terdekat
-        beta          : faktor pengimbangan (1.0 = seimbang penuh)
-        d_threshold   : ambang ketidakseimbangan
-        epsilon       : regularisasi numerik
-        alpha_blend   : bobot kovarians global (0=lokal saja, 1=global saja)
+        minority_class: label of the minority class
+        k             : number of nearest neighbors
+        beta          : balancing factor (1.0 = fully balanced)
+        d_threshold   : imbalance threshold
+        epsilon       : numerical regularization
+        alpha_blend   : global covariance weight (0=local only, 1=global only)
         """
         minority_idx = np.where(y == minority_class)[0]
         X_minority = X[minority_idx]
@@ -47,10 +47,10 @@ class AdasynGaussian:
         if G == 0:
             return X, y, np.empty((0, X.shape[1]))
 
-        # ── 1. ADAPTIVE DENSITY WEIGHTING (inti ADASYN) ──────────────────────
-        # ri = proporsi tetangga majority di sekitar setiap minority sample.
-        # Semakin tinggi ri, semakin sulit diklasifikasi → perlu lebih banyak
-        # sampel sintetis.
+        # ── 1. ADAPTIVE DENSITY WEIGHTING (ADASYN Core) ──────────────────────
+        # ri = the proportion of majority neighbors surrounding each minority sample.
+        # The higher ri is, the harder it is to classify → more
+        # synthetic samples are needed.
         k_all = min(k, len(X) - 1)
         nn_all = NearestNeighbors(n_neighbors=k_all + 1).fit(X)
 
@@ -63,16 +63,16 @@ class AdasynGaussian:
 
         r_sum = np.sum(r_i)
         if r_sum == 0:
-            # Semua minority samples dikelilingi sesama — distribusi uniform
+            # All minority samples are surrounded by others — uniform distribution
             r_i = np.ones(m_s) / m_s
         else:
             r_i = r_i / r_sum  # normalize
 
-        # gi = jumlah sampel sintetis per minority sample (adaptive)
+        # gi = number of synthetic samples per minority sample (adaptive)
         g_i = np.round(r_i * G).astype(int)
 
-        # ── 2. KOVARIANS GLOBAL KELAS MINORITAS ──────────────────────────────
-        # Digunakan sebagai regularisasi agar variansi Gaussian tidak mendekati nol.
+        # ── 2. GLOBAL COVARIANCE FOR MINORITY CLASSES  ──────────────────────────────
+        # Used as regularization to prevent the Gaussian variance from approaching zero.
         if m_s > 1:
             sigma_global = np.cov(X_minority, rowvar=False)
             if sigma_global.ndim == 0:
@@ -83,7 +83,7 @@ class AdasynGaussian:
         sigma_global = _make_psd(sigma_global, epsilon)
 
         # ── 3. GAUSSIAN SAMPLING ─────────────────────────────────────────────
-        # Fit NearestNeighbors hanya pada kelas minoritas untuk sampling lokal.
+        # Apply Nearest Neighbors only to the minority class for local sampling.
         k_min = min(k, m_s - 1) if m_s > 1 else 1
         nn_min = NearestNeighbors(n_neighbors=k_min + 1).fit(X_minority)
 
@@ -97,10 +97,10 @@ class AdasynGaussian:
             nbrs_min = [n for n in nbrs_min if n != i][:k_min]
             local_pts = np.vstack([X_minority[nbrs_min], X_minority[i:i+1]])
 
-            # Rata-rata lokal sebagai pusat distribusi
+            # Local average as a distribution hub
             mu = np.mean(local_pts, axis=0)
 
-            # Kovarians lokal (dari tetangga terdekat kelas minoritas)
+            # Local covariance (from the nearest neighbors of the minority class)
             if len(local_pts) > 1:
                 sigma_local = np.cov(local_pts, rowvar=False)
                 if sigma_local.ndim == 0:
@@ -109,7 +109,7 @@ class AdasynGaussian:
                 sigma_local = np.zeros((X.shape[1], X.shape[1]))
 
             # Blend: sigma = (1-alpha)*sigma_lokal + alpha*sigma_global
-            # alpha_blend > 0 menjamin variansi bermakna walau tetangga sangat mirip
+            # alpha_blend > 0 ensures meaningful variance even when neighbors are very similar
             sigma = (1.0 - alpha_blend) * sigma_local + alpha_blend * sigma_global
             sigma = _make_psd(sigma, epsilon)
 
